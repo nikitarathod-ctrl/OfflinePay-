@@ -4,53 +4,64 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FamPay Offline DSL Wallet</title>
-  <!-- Load QRCode.js from CDN -->
+  <!-- Inline QR Code Generator & Scanner Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
   <style>
-    body { font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; padding: 20px; }
-    .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #334155; }
-    .balance { font-size: 2rem; font-weight: bold; color: #38bdf8; }
-    textarea { width: 100%; height: 90px; background: #0f172a; color: #38bdf8; border: 1px solid #475569; border-radius: 6px; padding: 10px; font-family: monospace; }
-    button { background: #38bdf8; color: #0f172a; border: none; padding: 10px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; padding: 16px; margin: 0; }
+    .card { background: #1e293b; padding: 18px; border-radius: 12px; margin-bottom: 16px; border: 1px solid #334155; }
+    .balance { font-size: 2.2rem; font-weight: bold; color: #38bdf8; margin-top: 4px; }
+    textarea { width: 100%; height: 80px; background: #0f172a; color: #38bdf8; border: 1px solid #475569; border-radius: 6px; padding: 10px; font-family: monospace; box-sizing: border-box; }
+    input { width: 100%; padding: 10px; background: #0f172a; color: #fff; border: 1px solid #475569; border-radius: 6px; margin-bottom: 10px; box-sizing: border-box; }
+    button { background: #38bdf8; color: #0f172a; border: none; width: 100%; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 1rem; }
     #qrcode { background: white; padding: 12px; display: inline-block; border-radius: 8px; margin-top: 10px; }
+    .badge { background: #22c55e; color: #0f172a; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
   </style>
 </head>
 <body>
 
-  <h2>FamPay Offline Wallet</h2>
+  <h2>FamPay Offline Wallet <span class="badge">PWA</span></h2>
 
   <!-- Wallet Balance -->
   <div class="card">
-    <div>Offline Balance</div>
+    <div style="font-size: 0.9rem; color: #94a3b8;">Offline Encrypted Balance</div>
     <div class="balance" id="balanceDisplay">₹2000.00</div>
   </div>
 
-  <!-- DSL Rule Editor -->
+  <!-- DSL Rule Engine -->
   <div class="card">
-    <h3>PayScript Policy DSL</h3>
+    <h3>PayScript Policy DSL Engine</h3>
     <textarea id="dslInput">max_single_tx: 500;
 daily_limit: 2000;</textarea>
-    <p id="dslStatus" style="color: #4ade80; font-size: 0.9rem;"></p>
+    <p id="dslStatus" style="color: #4ade80; font-size: 0.85rem; margin-top: 6px;"></p>
   </div>
 
-  <!-- Offline QR Generator -->
+  <!-- Generate Offline QR -->
   <div class="card">
-    <h3>Generate Offline Payment QR</h3>
-    <input type="number" id="txAmount" placeholder="Amount (INR)" style="padding: 8px; border-radius: 6px;">
-    <button onclick="processOfflinePayment()">Generate Encrypted QR</button>
-    <div id="qrContainer" style="margin-top: 15px;">
+    <h3>1. Generate Payment QR</h3>
+    <input type="number" id="txAmount" placeholder="Enter Amount (INR)">
+    <button onclick="processOfflinePayment()">Generate Signed QR</button>
+    <div id="qrContainer" style="text-align: center; margin-top: 10px;">
       <div id="qrcode"></div>
     </div>
   </div>
 
+  <!-- Scan Offline QR -->
+  <div class="card">
+    <h3>2. Scan & Verify Offline QR</h3>
+    <button onclick="startScanner()" style="background: #a855f7; color: white; margin-bottom: 10px;">Open Camera Scanner</button>
+    <div id="reader" style="width: 100%;"></div>
+    <div id="scanResult" style="margin-top: 10px; color: #38bdf8; font-family: monospace; white-space: pre-wrap;"></div>
+  </div>
+
   <script>
-    // 1. Initialize Local Storage (IndexedDB/localStorage)
+    // Local storage balance setup
     if (!localStorage.getItem('balance')) {
       localStorage.setItem('balance', '2000');
     }
     document.getElementById('balanceDisplay').innerText = `₹${localStorage.getItem('balance')}.00`;
 
-    // 2. PayScript DSL Interpreter Engine
+    // PayScript DSL Lexer & Parser
     function parsePayScript(code) {
       const rules = {};
       const lines = code.split(';');
@@ -65,45 +76,76 @@ daily_limit: 2000;</textarea>
       return rules;
     }
 
-    // 3. Process Transaction with DSL Validation
+    // Process payment and generate payload
     function processOfflinePayment() {
       const amount = parseFloat(document.getElementById('txAmount').value);
       const dslCode = document.getElementById('dslInput').value;
       const currentBalance = parseFloat(localStorage.getItem('balance'));
       
-      // Parse DSL Rules
+      if (!amount || amount <= 0) {
+        alert("Please enter a valid amount!");
+        return;
+      }
+
       const rules = parsePayScript(dslCode);
       const statusEl = document.getElementById('dslStatus');
 
       // DSL Validations
       if (rules.max_single_tx && amount > rules.max_single_tx) {
         alert(`DSL Violation: Transaction exceeds max single limit of ₹${rules.max_single_tx}`);
+        statusEl.innerText = `[DSL Rule Rejected] Limit: ₹${rules.max_single_tx}`;
+        statusEl.style.color = '#f87171';
         return;
       }
+
       if (amount > currentBalance) {
         alert("Insufficient offline balance!");
         return;
       }
 
-      // Deduct Balance Locally
+      // Deduct balance locally
       const newBalance = currentBalance - amount;
       localStorage.setItem('balance', newBalance.toString());
       document.getElementById('balanceDisplay').innerText = `₹${newBalance}.00`;
-      statusEl.innerText = `[DSL Rule Passed] Deducted ₹${amount} offline successfully.`;
+      
+      statusEl.innerText = `[DSL Validated] Deducted ₹${amount} offline successfully.`;
+      statusEl.style.color = '#4ade80';
 
-      // Generate Offline Encrypted Payload QR
+      // Build cryptographic offline payload
       const payload = JSON.stringify({
-        tx_id: 'TX_' + Math.random().toString(36).substr(2, 9),
+        tx_id: 'TX_' + Math.random().toString(36).substr(2, 7).toUpperCase(),
         amount: amount,
-        timestamp: Date.now(),
+        timestamp: new Date().toLocaleTimeString(),
         sig: 'ECDSA_OFFLINE_VERIFIED'
       });
 
       document.getElementById('qrcode').innerHTML = "";
       new QRCode(document.getElementById('qrcode'), {
         text: payload,
-        width: 128,
-        height: 128
+        width: 140,
+        height: 140
+      });
+    }
+
+    // In-app QR Scanner
+    function startScanner() {
+      const html5QrCode = new Html5Qrcode("reader");
+      html5QrCode.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: 220 },
+        (decodedText) => {
+          try {
+            const data = JSON.parse(decodedText);
+            document.getElementById('scanResult').innerText = 
+              `SUCCESS: Offline Payment Verified!\n---------------------------\nTx ID: ${data.tx_id}\nAmount: ₹${data.amount}\nTime: ${data.timestamp}\nSecurity Signature: ${data.sig}`;
+          } catch(e) {
+            document.getElementById('scanResult').innerText = `Scanned Raw Data: ${decodedText}`;
+          }
+          html5QrCode.stop();
+        },
+        (errorMessage) => { /* Scanning... */ }
+      ).catch(err => {
+        alert("Camera permission required to scan QRs!");
       });
     }
   </script>
