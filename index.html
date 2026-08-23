@@ -10,21 +10,27 @@
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; padding: 16px; margin: 0; }
     .card { background: #1e293b; padding: 18px; border-radius: 12px; margin-bottom: 16px; border: 1px solid #334155; }
+    .balance-header { display: flex; justify-content: space-between; align-items: center; }
     .balance { font-size: 2.2rem; font-weight: bold; color: #38bdf8; margin-top: 4px; }
     textarea { width: 100%; height: 80px; background: #0f172a; color: #38bdf8; border: 1px solid #475569; border-radius: 6px; padding: 10px; font-family: monospace; box-sizing: border-box; }
     input { width: 100%; padding: 10px; background: #0f172a; color: #fff; border: 1px solid #475569; border-radius: 6px; margin-bottom: 10px; box-sizing: border-box; }
     button { background: #38bdf8; color: #0f172a; border: none; width: 100%; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 1rem; }
+    .btn-reset { background: #ef4444; color: white; width: auto; padding: 6px 12px; font-size: 0.8rem; }
     #qrcode { background: white; padding: 12px; display: inline-block; border-radius: 8px; margin-top: 10px; }
     .badge { background: #22c55e; color: #0f172a; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
+    .tx-item { background: #0f172a; padding: 10px; border-radius: 6px; margin-top: 8px; border-left: 4px solid #38bdf8; font-family: monospace; font-size: 0.85rem; }
   </style>
 </head>
 <body>
 
   <h2>FamPay Offline Wallet <span class="badge">PWA</span></h2>
 
-  <!-- Wallet Balance -->
+  <!-- Wallet Balance & Reset -->
   <div class="card">
-    <div style="font-size: 0.9rem; color: #94a3b8;">Offline Encrypted Balance</div>
+    <div class="balance-header">
+      <div style="font-size: 0.9rem; color: #94a3b8;">Offline Balance</div>
+      <button class="btn-reset" onclick="resetBalance()">Reset ₹2000</button>
+    </div>
     <div class="balance" id="balanceDisplay">₹2000.00</div>
   </div>
 
@@ -54,12 +60,51 @@ daily_limit: 2000;</textarea>
     <div id="scanResult" style="margin-top: 10px; color: #38bdf8; font-family: monospace; white-space: pre-wrap;"></div>
   </div>
 
+  <!-- Transaction History -->
+  <div class="card">
+    <h3>Transaction History</h3>
+    <div id="historyList" style="color: #94a3b8; font-size: 0.9rem;">No offline transactions yet.</div>
+  </div>
+
   <script>
-    // Local storage balance setup
+    // Initialize Local Storage
     if (!localStorage.getItem('balance')) {
       localStorage.setItem('balance', '2000');
     }
-    document.getElementById('balanceDisplay').innerText = `₹${localStorage.getItem('balance')}.00`;
+    if (!localStorage.getItem('tx_history')) {
+      localStorage.setItem('tx_history', JSON.stringify([]));
+    }
+    
+    updateUI();
+
+    // Update Balance and History display
+    function updateUI() {
+      document.getElementById('balanceDisplay').innerText = `₹${localStorage.getItem('balance')}.00`;
+      
+      const history = JSON.parse(localStorage.getItem('tx_history'));
+      const historyEl = document.getElementById('historyList');
+      
+      if (history.length === 0) {
+        historyEl.innerHTML = "No offline transactions yet.";
+      } else {
+        historyEl.innerHTML = history.map(tx => `
+          <div class="tx-item">
+            <div style="color: #38bdf8; font-weight: bold;">-${tx.amount} INR</div>
+            <div>ID: ${tx.tx_id} | Time: ${tx.timestamp}</div>
+          </div>
+        `).join('');
+      }
+    }
+
+    // Reset Balance & History Function
+    function resetBalance() {
+      localStorage.setItem('balance', '2000');
+      localStorage.setItem('tx_history', JSON.stringify([]));
+      document.getElementById('qrcode').innerHTML = "";
+      document.getElementById('dslStatus').innerText = "";
+      updateUI();
+      alert("Balance reset to ₹2000 and transaction history cleared!");
+    }
 
     // PayScript DSL Lexer & Parser
     function parsePayScript(code) {
@@ -76,7 +121,7 @@ daily_limit: 2000;</textarea>
       return rules;
     }
 
-    // Process payment and generate payload
+    // Process Payment
     function processOfflinePayment() {
       const amount = parseFloat(document.getElementById('txAmount').value);
       const dslCode = document.getElementById('dslInput').value;
@@ -106,28 +151,34 @@ daily_limit: 2000;</textarea>
       // Deduct balance locally
       const newBalance = currentBalance - amount;
       localStorage.setItem('balance', newBalance.toString());
-      document.getElementById('balanceDisplay').innerText = `₹${newBalance}.00`;
       
-      statusEl.innerText = `[DSL Validated] Deducted ₹${amount} offline successfully.`;
-      statusEl.style.color = '#4ade80';
-
-      // Build cryptographic offline payload
-      const payload = JSON.stringify({
+      // Save Transaction to History
+      const txData = {
         tx_id: 'TX_' + Math.random().toString(36).substr(2, 7).toUpperCase(),
         amount: amount,
         timestamp: new Date().toLocaleTimeString(),
         sig: 'ECDSA_OFFLINE_VERIFIED'
-      });
+      };
 
+      const history = JSON.parse(localStorage.getItem('tx_history'));
+      history.unshift(txData); // Add to beginning of array
+      localStorage.setItem('tx_history', JSON.stringify(history));
+
+      // Update UI
+      updateUI();
+      statusEl.innerText = `[DSL Validated] Deducted ₹${amount} offline successfully.`;
+      statusEl.style.color = '#4ade80';
+
+      // Generate QR
       document.getElementById('qrcode').innerHTML = "";
       new QRCode(document.getElementById('qrcode'), {
-        text: payload,
+        text: JSON.stringify(txData),
         width: 140,
         height: 140
       });
     }
 
-    // In-app QR Scanner
+    // Camera Scanner
     function startScanner() {
       const html5QrCode = new Html5Qrcode("reader");
       html5QrCode.start(
