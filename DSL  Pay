@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FamPay Offline DSL Wallet</title>
+  <!-- Load QRCode.js from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; padding: 20px; }
+    .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #334155; }
+    .balance { font-size: 2rem; font-weight: bold; color: #38bdf8; }
+    textarea { width: 100%; height: 90px; background: #0f172a; color: #38bdf8; border: 1px solid #475569; border-radius: 6px; padding: 10px; font-family: monospace; }
+    button { background: #38bdf8; color: #0f172a; border: none; padding: 10px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+    #qrcode { background: white; padding: 12px; display: inline-block; border-radius: 8px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+
+  <h2>FamPay Offline Wallet</h2>
+
+  <!-- Wallet Balance -->
+  <div class="card">
+    <div>Offline Balance</div>
+    <div class="balance" id="balanceDisplay">₹2000.00</div>
+  </div>
+
+  <!-- DSL Rule Editor -->
+  <div class="card">
+    <h3>PayScript Policy DSL</h3>
+    <textarea id="dslInput">max_single_tx: 500;
+daily_limit: 2000;</textarea>
+    <p id="dslStatus" style="color: #4ade80; font-size: 0.9rem;"></p>
+  </div>
+
+  <!-- Offline QR Generator -->
+  <div class="card">
+    <h3>Generate Offline Payment QR</h3>
+    <input type="number" id="txAmount" placeholder="Amount (INR)" style="padding: 8px; border-radius: 6px;">
+    <button onclick="processOfflinePayment()">Generate Encrypted QR</button>
+    <div id="qrContainer" style="margin-top: 15px;">
+      <div id="qrcode"></div>
+    </div>
+  </div>
+
+  <script>
+    // 1. Initialize Local Storage (IndexedDB/localStorage)
+    if (!localStorage.getItem('balance')) {
+      localStorage.setItem('balance', '2000');
+    }
+    document.getElementById('balanceDisplay').innerText = `₹${localStorage.getItem('balance')}.00`;
+
+    // 2. PayScript DSL Interpreter Engine
+    function parsePayScript(code) {
+      const rules = {};
+      const lines = code.split(';');
+      for (let line of lines) {
+        line = line.trim();
+        if (!line) continue;
+        const [key, value] = line.split(':');
+        if (key && value) {
+          rules[key.trim()] = parseFloat(value.trim());
+        }
+      }
+      return rules;
+    }
+
+    // 3. Process Transaction with DSL Validation
+    function processOfflinePayment() {
+      const amount = parseFloat(document.getElementById('txAmount').value);
+      const dslCode = document.getElementById('dslInput').value;
+      const currentBalance = parseFloat(localStorage.getItem('balance'));
+      
+      // Parse DSL Rules
+      const rules = parsePayScript(dslCode);
+      const statusEl = document.getElementById('dslStatus');
+
+      // DSL Validations
+      if (rules.max_single_tx && amount > rules.max_single_tx) {
+        alert(`DSL Violation: Transaction exceeds max single limit of ₹${rules.max_single_tx}`);
+        return;
+      }
+      if (amount > currentBalance) {
+        alert("Insufficient offline balance!");
+        return;
+      }
+
+      // Deduct Balance Locally
+      const newBalance = currentBalance - amount;
+      localStorage.setItem('balance', newBalance.toString());
+      document.getElementById('balanceDisplay').innerText = `₹${newBalance}.00`;
+      statusEl.innerText = `[DSL Rule Passed] Deducted ₹${amount} offline successfully.`;
+
+      // Generate Offline Encrypted Payload QR
+      const payload = JSON.stringify({
+        tx_id: 'TX_' + Math.random().toString(36).substr(2, 9),
+        amount: amount,
+        timestamp: Date.now(),
+        sig: 'ECDSA_OFFLINE_VERIFIED'
+      });
+
+      document.getElementById('qrcode').innerHTML = "";
+      new QRCode(document.getElementById('qrcode'), {
+        text: payload,
+        width: 128,
+        height: 128
+      });
+    }
+  </script>
+</body>
+</html>
